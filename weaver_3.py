@@ -39,21 +39,25 @@ def set_stepper_speed(pins, speed):
     return delay
 
 def move_stepper(name, pins, steps):
+    global rotSeqIndex, inOutSeqIndex
     print("Moving",name,"stepper",steps, "steps")
+
+    seqIndex = rotSeqIndex if name == "rot" else inOutSeqIndex
+    seqAmt = 1 if steps > 0 else -1
+    sequence = [[1, 0, 0, 1], [1, 1, 0, 0], [0, 1, 1, 0], [0, 0, 1, 1]]
+    # steps = steps * 4
+    if name == "rot":
+        steps = steps * 4
     for _ in range(abs(steps)):
-        if steps > 0:
-            # Full step sequence (adjust if needed for half-stepping, etc.)
-            for seq in [[1, 0, 0, 1], [1, 1, 0, 0], [0, 1, 1, 0], [0, 0, 1, 1]]:
-                for i, pin in enumerate(pins):
-                    pin.value(seq[i])
-                #time.sleep_us(int(set_stepper_speed(pins, maxSpeed))) # Crude speed control
-                time.sleep(0.002)
-        else: #Reverse direction
-            for seq in [[0, 0, 1, 1], [0, 1, 1, 0], [1, 1, 0, 0], [1, 0, 0, 1]]:
-                for i, pin in enumerate(pins):
-                    pin.value(seq[i])
-                #time.sleep_us(int(set_stepper_speed(pins, maxSpeed))) # Crude speed control
-                time.sleep(0.002)
+        for i, pin in enumerate(pins):
+            print("Step: ", _, "Pin: ", i, "Index:", seqIndex, "Seq: ", sequence[seqIndex % 4],"Value: ", sequence[seqIndex % 4][i])
+            pin.value(sequence[seqIndex % 4][i])
+        time.sleep(0.001)
+        seqIndex += seqAmt
+    if name == "rot":
+        rotSeqIndex = seqIndex
+    else:
+        inOutSeqIndex = seqIndex
     print("Stepper moved")
 
 # Create "stepper" objects (just lists of pins for now)
@@ -87,15 +91,46 @@ def movePolar(theta, rho):
     inOutSteps = round(rho * inOut_total_steps)
     inOutSteps -= offsetSteps
 
-    move_stepper("rot", rotStepper, rotSteps)
-    move_stepper("inout", inOutStepper, inOutSteps)
+    move_synchronized(rotStepper, rotSteps, inOutStepper, inOutSteps)
+    #move_stepper("rot", rotStepper, rotSteps)
+    #move_stepper("inout", inOutStepper, inOutSteps)
 
     currentTheta = theta
     currentRho = rho
 
+
+rotSeqIndex = 0
+inOutSeqIndex = 0
+
+def move_synchronized(rotStepper, rotSteps, inOutStepper, inOutSteps):
+    max_steps = max(abs(rotSteps), abs(inOutSteps))
+    rot_ratio = rotSteps / max_steps if max_steps != 0 else 0
+    inout_ratio = inOutSteps / max_steps if max_steps != 0 else 0
+
+    print("Max Steps: ", max_steps, "Rot Ratio: ", rot_ratio, "InOut Ratio: ", inout_ratio)
+    rot_counter = rot_ratio
+    inout_counter = inout_ratio
+
+    for _ in range(max_steps):
+        print("Step: ", _, "Rot Counter: ", rot_counter, "InOut Counter: ", inout_counter)
+        # there are 4 items per sequence for a step
+        if (abs(rot_counter) >= 0.25):
+            move_stepper("rot", rotStepper, rot_counter)
+            rot_counter = rot_ratio
+        else:
+            rot_counter += rot_ratio
+        #move_stepper("rot", rotStepper, rot_ratio)
+        if (abs(inout_counter) >= 0.25):
+            move_stepper("inout", inOutStepper, inout_counter)
+            inout_counter -= inout_ratio
+        else:
+            inout_counter += inout_ratio
+        #move_stepper("inout", inOutStepper, inout_ratio)
+
 def interpolatePath(startTheta, startRho, endTheta, endRho, subSteps):
     print("Theta from:",startTheta, "to",endTheta,"Rho from:",startRho, "to",endRho)
     distance = math.sqrt((endTheta - startTheta)**2 + (endRho - startRho)**2)
+    print("Distance: ", distance)
     numSteps = max(1, int(distance / subSteps))
 
     print("Steps: ", numSteps)
