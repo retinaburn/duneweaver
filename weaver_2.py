@@ -16,7 +16,7 @@ INOUT_PIN4 = machine.Pin(6, machine.Pin.OUT)
 # Stepper parameters
 rot_total_steps = 12800 #/1000
 inOut_total_steps = 4642
-gearRatio = 100.0 / 16.0
+gearRatio = 100.0 #/ 16.0
 
 # Buffer for theta-rho pairs
 BUFFER_SIZE = 10
@@ -34,7 +34,8 @@ subSteps = 1
 
 # Stepper driver (using a simple full-step driver emulation)
 class Stepper:
-    def __init__(self, pin1, pin2, pin3, pin4):
+    def __init__(self, name, pin1, pin2, pin3, pin4):
+        self.name = name
         self.pins = [pin1, pin2, pin3, pin4]
         self.current_step = 0
         self.current_position = 0
@@ -52,9 +53,11 @@ class Stepper:
             pin.value(0)
 
     def set_speed(self, speed):
+        print(self.name, " speed:", speed)
         self.speed = speed
 
     def set_max_speed(self, max_speed):
+        print(self.name, " max speed:", max_speed)
         self.max_speed = max_speed
 
     def set_acceleration(self, acceleration):
@@ -67,6 +70,7 @@ class Stepper:
         return self.current_position
 
     def run_speed(self):
+        #print("Self: ", self.name," speed:", self.speed, " current_position:", self.current_position)
         if not self.enabled:
             return
         if self.speed > 0:
@@ -80,11 +84,28 @@ class Stepper:
         self.update_pins()
         #print("Sleeping for: ", int(1000000 / abs(self.speed)))
         #time.sleep_us(int(1000000 / abs(self.speed)))  # Crude delay for speed control
+        #time.sleep(0.002)
         time.sleep(0.002)
 
     def run_speed_to_position(self):
+
+        # false negative, true positive
+        speed_direction = True
+        last_speed_direction = False
+        speed_printed = False
+        #print("Current Position: ", self.current_position, "Target Position: ", self.target_position)
         while self.current_position != self.target_position:
-            if self.current_position < self.target_position:
+            if speed_direction != last_speed_direction:
+                speed_printed = False
+            if not speed_printed:
+                    speed_printed = True
+                    #last_speed_direction = speed_direction
+                    #print(self.name, " Current Position: ", self.current_position, "Target Position: ", self.target_position, "Speed: ", self.speed)
+            if (self.current_position + self.speed) > self.target_position:
+                #print("Reached target position")
+                self.current_position = self.target_position
+                continue
+            if self.current_position < self.target_position:     
                 self.speed = self.max_speed
             else:
                 self.speed = -self.max_speed
@@ -92,6 +113,7 @@ class Stepper:
 
     def move_to(self, target_position):
         self.target_position = target_position
+        #print("From position: ", self.current_position, "To position: ", self.target_position)
         self.run_speed_to_position()
 
     def update_pins(self):
@@ -101,8 +123,8 @@ class Stepper:
 
 
 # Create stepper objects
-rotStepper = Stepper(ROT_PIN1, ROT_PIN2, ROT_PIN3, ROT_PIN4)
-inOutStepper = Stepper(INOUT_PIN1, INOUT_PIN2, INOUT_PIN3, INOUT_PIN4)
+rotStepper = Stepper("ROT", ROT_PIN1, ROT_PIN2, ROT_PIN3, ROT_PIN4)
+inOutStepper = Stepper("INOUT", INOUT_PIN1, INOUT_PIN2, INOUT_PIN3, INOUT_PIN4)
 
 # UART setup
 uart = machine.UART(0, 115200)
@@ -134,14 +156,18 @@ def movePolar(theta, rho):
     inOutSteps = round(rho * inOut_total_steps)
     inOutSteps -= offsetSteps
 
-    print("Rotating " + str(rotSteps) + " steps")
-    rotStepper.move_to(rotSteps)
-    print("Moving " + str(inOutSteps) + " steps")
-    inOutStepper.move_to(inOutSteps)
+    move_to(rotSteps, inOutSteps)
 
     currentTheta = theta
     currentRho = rho
     print("Moved")
+
+def move_to(rotSteps, inOutSteps):
+    print("Moving with rotSteps: " + str(rotSteps) + " inOutSteps: " + str(inOutSteps))
+    #print("Rotating " + str(rotSteps) + " steps")
+    rotStepper.move_to(rotSteps)
+    #print("Moving " + str(inOutSteps) + " steps")
+    inOutStepper.move_to(inOutSteps)
 
 def interpolatePath(startTheta, startRho, endTheta, endRho, subSteps):
     print("Interpolating path", startTheta, startRho, endTheta, endRho, subSteps)
@@ -151,6 +177,7 @@ def interpolatePath(startTheta, startRho, endTheta, endRho, subSteps):
     print("Interpolating path distance: " + str(distance) + " numSteps: " + str(numSteps))
     for step in range(numSteps + 1):
         t = step / numSteps
+        print("Step: ", step, "T: ", t, "NumSteps: ", numSteps)
         interpolatedTheta = startTheta + t * (endTheta - startTheta)
         interpolatedRho = startRho + t * (endRho - startRho)
         movePolar(interpolatedTheta, interpolatedRho)
@@ -218,8 +245,12 @@ HOME
 4.71239,1;
 6.28319,0;"""
 
+test_input4 = """SET_SPEED 1
+0,0;
+6.28319,0;"""
+
 while True:
-    process_serial_input(test_input3)
+    process_serial_input(test_input4)
     print("Buffer Count: ", bufferCount, "Batch Complete: ", batchComplete)
     if batchComplete and bufferCount > 0:
         rotStepper.enable_outputs()
