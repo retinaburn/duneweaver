@@ -30,7 +30,7 @@ currentRho = 0.0
 isFirstCoordinates = True
 maxSpeed = 550
 maxAcceleration = 5000 # Not directly used in this simple implementation
-subSteps = 1/4 # 1
+subSteps = 1/16 # 1
 
 # Stepper driver functions (emulating AccelStepper)
 def set_stepper_speed(pins, speed):
