@@ -124,16 +124,24 @@ def move_synchronized(rot_pins, rot_steps, inout_pins, inout_steps):
     rot_steps_remaining = abs(rot_steps)
     inout_steps_remaining = abs(inout_steps)
 
+    rot_sequence = [[1, 0, 0, 1], [1, 1, 0, 0], [0, 1, 1, 0], [0, 0, 1, 1]]
+    inout_sequence = [[1, 0, 0, 1], [1, 1, 0, 0], [0, 1, 1, 0], [0, 0, 1, 1]]
+
+    if (rot_direction == -1):
+        rot_sequence.reverse()
+    if (inout_direction == -1):
+        inout_sequence.reverse()
+
     while rot_steps_remaining > 0 or inout_steps_remaining > 0:
         if rot_steps_remaining > 0:
-            for seq in [[1 * rot_direction, 0, 0, 1 * rot_direction], [1 * rot_direction, 1 * rot_direction, 0, 0], [0, 1 * rot_direction, 1 * rot_direction, 0], [0, 0, 1 * rot_direction, 1 * rot_direction]]:
+            for seq in rot_sequence:
                 for j, pin in enumerate(rot_pins):
                     pin.value(seq[j])
                 print("ROT Pin: ", "[ ", seq[0],", ", seq[1],", ", seq[2],", ", seq[3],"]")    
                 time.sleep(0.002)    
             rot_steps_remaining -= 1
         if inout_steps_remaining > 0:
-            for seq in [[1 * inout_direction, 0, 0, 1 * inout_direction], [1 * inout_direction, 1 * inout_direction, 0, 0], [0, 1 * inout_direction, 1 * inout_direction, 0], [0, 0, 1 * inout_direction, 1 * inout_direction]]:
+            for seq in inout_sequence:
                 for j, pin in enumerate(inout_pins):
                     pin.value(seq[j])
                 print("INOUT Pin: ", "[ ", seq[0],", ", seq[1],", ", seq[2],", ", seq[3],"]")
@@ -193,7 +201,7 @@ test_input5 = """SET_SPEED 1
 0,0;"""
 
 
-input = test_input4
+input = test_input5
 
 # Main loop (simplified serial handling)
 while True:
