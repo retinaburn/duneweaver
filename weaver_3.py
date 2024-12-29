@@ -91,7 +91,8 @@ def movePolar(theta, rho):
 
     target_rot_step = round(theta * (rot_total_steps / (2.0 * math.pi)))
     target_inout_step = round(rho * inOut_total_steps)
-    offsetSteps = round(target_rot_step * compensation_ratio)
+    offsetSteps = round((target_rot_step - current_rot_step) * compensation_ratio)
+    #offsetSteps = round(target_rot_step * compensation_ratio)
 
     rot_step_diff = target_rot_step - current_rot_step
     inout_step_diff = (target_inout_step - current_inout_step) - offsetSteps
