@@ -28,16 +28,15 @@ def step(direction, steps, delay):
             pin_value = step_sequence[step_index][pin_index] 
             # Set the pin to this value
             ROTstepper_pins[pin_index].value(pin_value)
-            MOVstepper_pins[pin_index].value(pin_value)
+            MOVstepper_pins[-pin_index].value(pin_value)
         # Delay for the specified amount of time before taking the next step
         utime.sleep(delay)
 # Set the initial step index to 0
 step_index = 0
 # Take the specified number of steps in the anti-clockwise direction with a delay of 0.01 seconds between steps
-MOTOR_FACTOR=2048 / 40 # - 0.6
-print(f"Motor Factor: {MOTOR_FACTOR}")
-for i in range(40):
+
+for i in range(4000):
     ##step(1, 1.0 * MOTOR_FACTOR, 0.020)
-    step(1, 1.0 * MOTOR_FACTOR, 0.002)
+    step(1, 1.0, 0.002)
 # Take the specified number of steps in the clockwise direction with a delay of 0.01 seconds between steps
 #step(-1, 1000, 0.001)

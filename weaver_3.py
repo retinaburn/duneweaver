@@ -14,8 +14,9 @@ INOUT_PIN3 = machine.Pin(7, machine.Pin.OUT)
 INOUT_PIN4 = machine.Pin(6, machine.Pin.OUT)
 
 # Stepper parameters
-rot_total_steps = 512 * 6.25 #12800
+rot_total_steps = 512 * 6.25 # 100 (driven gear)/ 16 (teeth on gear) #12800
 inOut_total_steps = 4642
+compensation_ratio = 0.01888
 gearRatio = 100.0 / 16.0
 
 # Buffer for theta-rho pairs
@@ -40,19 +41,17 @@ def set_stepper_speed(pins, speed):
 
 def move_stepper(name, pins, steps):
     global rotSeqIndex, inOutSeqIndex
-    print("Moving",name,"stepper",steps, "steps")
+    print("Moving", name, "stepper", steps, "steps")
 
     seqIndex = rotSeqIndex if name == "rot" else inOutSeqIndex
     seqAmt = 1 if steps > 0 else -1
     sequence = [[1, 0, 0, 1], [1, 1, 0, 0], [0, 1, 1, 0], [0, 0, 1, 1]]
-    # steps = steps * 4
-    if name == "rot":
-        steps = steps * 4
-    for _ in range(abs(steps)):
+
+    for _ in range(abs(steps)): #Correct loop
         for i, pin in enumerate(pins):
-            print("Step: ", _, "Pin: ", i, "Index:", seqIndex, "Seq: ", sequence[seqIndex % 4],"Value: ", sequence[seqIndex % 4][i])
+            print("Pin: ", i, "Index:", seqIndex, "Seq: ", sequence[seqIndex % 4], "Value: ", sequence[seqIndex % 4][i])
             pin.value(sequence[seqIndex % 4][i])
-        time.sleep(0.001)
+        time.sleep(0.002)  # Adjust delay as needed
         seqIndex += seqAmt
     if name == "rot":
         rotSeqIndex = seqIndex
@@ -70,7 +69,7 @@ def homing():
     print("HOMING")
     # Move inOutStepper inward for homing (crude homing, relies on hitting a limit)
     #while True:
-    move_stepper("inout", inOutStepper, -100) #Move inwards, adjust steps if needed
+    move_stepper("inout", inOutStepper, -inOut_total_steps) #Move inwards, adjust steps if needed
     #    if machine.Pin(5, machine.Pin.IN, machine.Pin.PULL_UP).value() == 0: #Example limit switch on pin 5
     #        break
         
@@ -82,18 +81,28 @@ def homing():
     currentTheta = 0.0
     print("HOMED")
 
+current_rot_step = 0  # Initialize current rotational step
+current_inout_step = 0  # Initialize current in-out step
+
 def movePolar(theta, rho):
-    rho = max(0.0, min(1.0, rho))  # Clamp rho to [0, 1]
+    global current_rot_step, current_inout_step #Make global so they can be changed
 
-    rotSteps = round(theta * (rot_total_steps / (2.0 * math.pi)))
-    revolutions = theta / (2.0 * math.pi)
-    offsetSteps = round(revolutions * (rot_total_steps / gearRatio))
-    inOutSteps = round(rho * inOut_total_steps)
-    inOutSteps -= offsetSteps
+    rho = max(0.0, min(1.0, rho))
 
-    move_synchronized(rotStepper, rotSteps, inOutStepper, inOutSteps)
-    #move_stepper("rot", rotStepper, rotSteps)
-    #move_stepper("inout", inOutStepper, inOutSteps)
+    target_rot_step = round(theta * (rot_total_steps / (2.0 * math.pi)))
+    target_inout_step = round(rho * inOut_total_steps)
+    offsetSteps = round(target_rot_step * compensation_ratio)
+
+    rot_step_diff = target_rot_step - current_rot_step
+    inout_step_diff = (target_inout_step - current_inout_step) - offsetSteps
+
+    print(f"Target Rot Step: {target_rot_step}, Current Rot Step: {current_rot_step}, Difference: {rot_step_diff}")
+    print(f"Target InOut Step: {target_inout_step}, Current InOut Step: {current_inout_step}, Offset: {offsetSteps}, Difference: {inout_step_diff}")
+
+    move_synchronized(rotStepper, rot_step_diff, inOutStepper, inout_step_diff)
+
+    current_rot_step = target_rot_step  # Update current step positions
+    current_inout_step = target_inout_step
 
     currentTheta = theta
     currentRho = rho
@@ -102,46 +111,52 @@ def movePolar(theta, rho):
 rotSeqIndex = 0
 inOutSeqIndex = 0
 
-def move_synchronized(rotStepper, rotSteps, inOutStepper, inOutSteps):
-    max_steps = max(abs(rotSteps), abs(inOutSteps))
-    rot_ratio = rotSteps / max_steps if max_steps != 0 else 0
-    inout_ratio = inOutSteps / max_steps if max_steps != 0 else 0
+def move_synchronized(rot_pins, rot_steps, inout_pins, inout_steps):
+    """Moves both steppers simultaneously using integer math."""
 
-    print("Max Steps: ", max_steps, "Rot Ratio: ", rot_ratio, "InOut Ratio: ", inout_ratio)
-    rot_counter = rot_ratio
-    inout_counter = inout_ratio
+    rot_steps = int(rot_steps)
+    inout_steps = int(inout_steps)
+    
+    rot_direction = 1 if rot_steps > 0 else -1
+    inout_direction = 1 if inout_steps > 0 else -1
 
-    for _ in range(max_steps):
-        print("Step: ", _, "Rot Counter: ", rot_counter, "InOut Counter: ", inout_counter)
-        # there are 4 items per sequence for a step
-        if (abs(rot_counter) >= 0.25):
-            move_stepper("rot", rotStepper, rot_counter)
-            rot_counter = rot_ratio
-        else:
-            rot_counter += rot_ratio
-        #move_stepper("rot", rotStepper, rot_ratio)
-        if (abs(inout_counter) >= 0.25):
-            move_stepper("inout", inOutStepper, inout_counter)
-            inout_counter -= inout_ratio
-        else:
-            inout_counter += inout_ratio
-        #move_stepper("inout", inOutStepper, inout_ratio)
+    rot_steps_remaining = abs(rot_steps)
+    inout_steps_remaining = abs(inout_steps)
+
+    while rot_steps_remaining > 0 or inout_steps_remaining > 0:
+        if rot_steps_remaining > 0:
+            for seq in [[1 * rot_direction, 0, 0, 1 * rot_direction], [1 * rot_direction, 1 * rot_direction, 0, 0], [0, 1 * rot_direction, 1 * rot_direction, 0], [0, 0, 1 * rot_direction, 1 * rot_direction]]:
+                for j, pin in enumerate(rot_pins):
+                    pin.value(seq[j])
+                print("ROT Pin: ", "[ ", seq[0],", ", seq[1],", ", seq[2],", ", seq[3],"]")    
+                time.sleep(0.002)    
+            rot_steps_remaining -= 1
+        if inout_steps_remaining > 0:
+            for seq in [[1 * inout_direction, 0, 0, 1 * inout_direction], [1 * inout_direction, 1 * inout_direction, 0, 0], [0, 1 * inout_direction, 1 * inout_direction, 0], [0, 0, 1 * inout_direction, 1 * inout_direction]]:
+                for j, pin in enumerate(inout_pins):
+                    pin.value(seq[j])
+                print("INOUT Pin: ", "[ ", seq[0],", ", seq[1],", ", seq[2],", ", seq[3],"]")
+                time.sleep(0.002)
+            inout_steps_remaining -= 1
+    
+
 
 def interpolatePath(startTheta, startRho, endTheta, endRho, subSteps):
-    print("Theta from:",startTheta, "to",endTheta,"Rho from:",startRho, "to",endRho)
-    distance = math.sqrt((endTheta - startTheta)**2 + (endRho - startRho)**2)
-    print("Distance: ", distance)
-    numSteps = max(1, int(distance / subSteps))
+    print("Theta from:", startTheta, "to", endTheta, "Rho from:", startRho, "to", endRho)
 
-    print("Steps: ", numSteps)
-    t = 1 / numSteps
-    interpolatedTheta = startTheta + t * (endTheta - startTheta)
-    interpolatedRho = startRho + t * (endRho - startRho)
-    for step in range(numSteps):
-        print(" Step: ", step)
-        #t = step / numSteps
-        #interpolatedTheta = startTheta + t * (endTheta - startTheta)
-        #interpolatedRho = startRho + t * (endRho - startRho)
+    distance = math.sqrt((endTheta - startTheta)**2 + (endRho - startRho)**2)
+    print("Distance:", distance)
+
+    numSteps = 1 if distance == 0 else int(distance / subSteps) # More readable
+    print("Steps:", numSteps)
+
+    print("Start Theta:", startTheta, "End Theta:", endTheta)
+
+    for step in range(numSteps + 1): # Removed unnecessary abs()
+        t = step / numSteps
+        interpolatedTheta = startTheta + t * (endTheta - startTheta)
+        interpolatedRho = startRho + t * (endRho - startRho)
+        print(" Step:", step, "t (", step, "/", numSteps, "):", t, "Interpolated Theta:", interpolatedTheta, "Interpolated Rho:", interpolatedRho)
         movePolar(interpolatedTheta, interpolatedRho)
 
 
@@ -161,13 +176,20 @@ test_input3 = """SET_SPEED 1
 HOME
 0,0;
 1.5708,1;
-3.14159,2;
+3.14159,0;
 4.71239,1;
-6.28319,1;"""
+6.28319,0;"""
 
 test_input4 = """SET_SPEED 1
 0,0;
 6.28319,0;"""
+
+test_input5 = """SET_SPEED 1
+0,0;
+1.5708,0;
+0,0;
+1.5708,0;
+0,0;"""
 
 
 input = test_input4
@@ -195,13 +217,13 @@ while True:
                     print("INVALID_COMMAND")
             elif line.endswith(";"):
                 pairs = line.split(";")[:-1]
-                bufferCount = len(pairs)
                 for i, pair in enumerate(pairs):
+                    print("Processing pair ", i, ":", pair)
                     theta, rho = map(float, pair.split(","))
                     buffer[bufferCount][0] = theta
                     buffer[bufferCount][1] = rho
                     bufferCount += 1
-                batchComplete = True
+        batchComplete = True
 
         if batchComplete and bufferCount > 0:
             if isFirstCoordinates:
@@ -215,6 +237,7 @@ while True:
                 interpolatePath(startTheta, startRho, buffer[i][0], buffer[i][1], subSteps)
                 startTheta = buffer[i][0]
                 startRho = buffer[i][1]
+                time.sleep(10)
             batchComplete = False
             bufferCount = 0
             print("R")
