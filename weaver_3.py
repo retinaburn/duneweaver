@@ -16,7 +16,13 @@ INOUT_PIN4 = machine.Pin(6, machine.Pin.OUT)
 # Stepper parameters
 rot_total_steps = 512 * 6.25 # 100 (driven gear)/ 16 (teeth on gear) #12800
 inOut_total_steps = 4642
-compensation_ratio = 0.01888
+# A: 3200 steps = 100 (driven gear)/ 16 (drive gear) * 512 (steps pre revolution)
+# B: 0.397 mm/tooth = 13.5 (length of linear) / 34 (teeth on linear) 
+# C: 0.000123 mm/step  B / A
+# D: 2048 # ?? Supposed to be steps per revolution which is 512
+# E: 13.5mm / 2048 steps = 0.0066 mm/step | 13.5mm / 512 steps = 0.0264 mm/step
+# F: C / E | 0.000123 mm/step / 0.0264 mm/step = 0.0046
+compensation_ratio = 0.01888 # # 100 / 16 * 512 ... so why does 0.01888 work better ?
 gearRatio = 100.0 / 16.0
 
 # Buffer for theta-rho pairs
@@ -49,7 +55,6 @@ def move_stepper(name, pins, steps):
 
     for _ in range(abs(steps)): #Correct loop
         for i, pin in enumerate(pins):
-            print("Pin: ", i, "Index:", seqIndex, "Seq: ", sequence[seqIndex % 4], "Value: ", sequence[seqIndex % 4][i])
             pin.value(sequence[seqIndex % 4][i])
         time.sleep(0.002)  # Adjust delay as needed
         seqIndex += seqAmt
@@ -91,7 +96,12 @@ def movePolar(theta, rho):
 
     target_rot_step = round(theta * (rot_total_steps / (2.0 * math.pi)))
     target_inout_step = round(rho * inOut_total_steps)
-    offsetSteps = round((target_rot_step - current_rot_step) * compensation_ratio)
+    offsetDifference = (target_rot_step - current_rot_step)
+    print("Offset difference: ", offsetDifference)
+    offsetSteps = round(offsetDifference * compensation_ratio)
+    print("Offset Steps: ", offsetSteps)
+    offsetSteps = 5 * offsetSteps
+    print("Hacked Offset Steps: ", offsetSteps)
     #offsetSteps = round(target_rot_step * compensation_ratio)
 
     rot_step_diff = target_rot_step - current_rot_step
@@ -200,6 +210,20 @@ test_input5 = """SET_SPEED 1
 1.5708,0;
 0,0;"""
 
+test_input4 = """SET_SPEED 1
+0,0;
+6.28319,0;
+12.5664,0;
+18.8495,0;
+"""
+
+test_input5 = """SET_SPEED 1
+HOME
+0,0;
+1.5708,0;
+3.14159,0;
+4.71239,0;
+6.28319,0;"""
 
 input = test_input5
 
