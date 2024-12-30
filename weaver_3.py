@@ -186,6 +186,7 @@ def interpolatePath(startTheta, startRho, endTheta, endRho, subSteps):
 
     tolerance = 0.00001
     numSteps = 1 if distance < tolerance else int(distance / subSteps)
+    numSteps = 1 if numSteps == 0 else numSteps
     print("Steps:", numSteps)
 
     print("Start Theta:", startTheta, "End Theta:", endTheta)
@@ -275,8 +276,8 @@ input = test_input7
 filename = "patterns/03 pnuttrellis (E) (N N).thr"
 
 print("Parsing")
-#parseFile(filename)
-readInput(input)
+parseFile(filename)
+#readInput(input)
 print("Parsed")
 print("Executing")
 batchComplete = True
