@@ -95,8 +95,8 @@ def homing():
         pin.value(0)
     for pin in rotStepper:
         pin.value(0)
-    currentRho = 0.0
-    currentTheta = 0.0
+    currentRho = current_rot_step = 0.0
+    currentTheta = current_inout_step = 0.0
     print("HOMED")
 
 current_rot_step = 0  # Initialize current rotational step
@@ -150,25 +150,30 @@ def move_synchronized(rot_pins, rot_steps, inout_pins, inout_steps):
     rot_sequence = [[1, 0, 0, 1], [1, 1, 0, 0], [0, 1, 1, 0], [0, 0, 1, 1]]
     inout_sequence = [[1, 0, 0, 1], [1, 1, 0, 0], [0, 1, 1, 0], [0, 0, 1, 1]]
 
-    if (rot_direction == -1):
-        rot_sequence.reverse()
-    if (inout_direction == -1):
-        inout_sequence.reverse()
+    #if (rot_direction == -1):
+    #    rot_sequence.reverse()
+    #if (inout_direction == -1):
+    #    inout_sequence.reverse()
+
+    rot_seq_index = 0
+    inout_seq_index = 0
 
     while rot_steps_remaining > 0 or inout_steps_remaining > 0:
         if rot_steps_remaining > 0:
-            for seq in rot_sequence:
-                for j, pin in enumerate(rot_pins):
-                    pin.value(seq[j])
-                #print("ROT Pin: ", "[ ", seq[0],", ", seq[1],", ", seq[2],", ", seq[3],"]")    
-                time.sleep(0.002)    
+            #for seq in rot_sequence:
+            for j, pin in enumerate(rot_pins):
+                pin.value(rot_sequence[rot_seq_index % 4][j])
+            rot_seq_index += rot_direction
+            #print("ROT Pin: ", "[ ", seq[0],", ", seq[1],", ", seq[2],", ", seq[3],"]")    
+            time.sleep(0.002)    
             rot_steps_remaining -= 1
         if inout_steps_remaining > 0:
-            for seq in inout_sequence:
-                for j, pin in enumerate(inout_pins):
-                    pin.value(seq[j])
-                #print("INOUT Pin: ", "[ ", seq[0],", ", seq[1],", ", seq[2],", ", seq[3],"]")
-                time.sleep(0.002)
+            #for seq in inout_sequence:
+            for j, pin in enumerate(inout_pins):
+                pin.value(inout_sequence[inout_seq_index % 4][j])
+            inout_seq_index += inout_direction
+            #print("INOUT Pin: ", "[ ", seq[0],", ", seq[1],", ", seq[2],", ", seq[3],"]")
+            time.sleep(0.002)
             inout_steps_remaining -= 1
     
 
@@ -177,9 +182,10 @@ def interpolatePath(startTheta, startRho, endTheta, endRho, subSteps):
     print("Theta from:", startTheta, "to", endTheta, "Rho from:", startRho, "to", endRho)
 
     distance = math.sqrt((endTheta - startTheta)**2 + (endRho - startRho)**2)
-    print("Distance:", distance)
+    print("Distance:", distance, "Substeps:", subSteps, "Calculated Steps:", distance / subSteps)
 
-    numSteps = 1 if distance <= 1 else int(distance / subSteps) # More readable
+    tolerance = 0.00001
+    numSteps = 1 if distance < tolerance else int(distance / subSteps)
     print("Steps:", numSteps)
 
     print("Start Theta:", startTheta, "End Theta:", endTheta)
@@ -229,27 +235,22 @@ test_input2 = """1.25673,0.03250;
 0.62272,0.03571;
 """
 
-test_input3 = """SET_SPEED 1
-HOME
-0,0;
+test_input3 = """
 1.5708,1;
 3.14159,0;
 4.71239,1;
 6.28319,0;"""
 
-test_input4 = """SET_SPEED 1
-0,0;
+test_input4 = """
 6.28319,0;"""
 
-test_input5 = """SET_SPEED 1
-0,0;
+test_input5 = """
 1.5708,0;
 0,0;
 1.5708,0;
 0,0;"""
 
-test_input4 = """SET_SPEED 1
-0,0;
+test_input4 = """
 6.28319,0;
 12.5664,0;
 18.8495,0;
@@ -261,7 +262,15 @@ test_input5 = """
 4.71239,0;
 6.28319,0;"""
 
-input = test_input4
+test_input6 = """
+0,1;
+0,0;
+0,1;
+0,0;
+0,1;
+0,0;
+0,1;"""
+input = test_input6
 
 filename = "patterns/03 pnuttrellis (E) (N N).thr"
 
