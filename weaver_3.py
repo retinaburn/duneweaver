@@ -15,7 +15,7 @@ INOUT_PIN3 = machine.Pin(7, machine.Pin.OUT)
 INOUT_PIN4 = machine.Pin(6, machine.Pin.OUT)
 
 # Stepper parameters
-rot_total_steps = 512 * 6.25 # 100 (driven gear)/ 16 (teeth on gear) #12800
+rot_total_steps = 12800 #512 * 6.25 = 3200 # 100 (driven gear)/ 16 (teeth on gear) #12800
 inOut_total_steps = 4642 #4600 
 # A: 3200 steps = 100 (driven gear)/ 16 (drive gear) * 512 (steps pre revolution)
 # B: 0.397 mm/tooth = 13.5 (length of linear) / 34 (teeth on linear) 
@@ -23,7 +23,7 @@ inOut_total_steps = 4642 #4600
 # D: 2048 # ?? Supposed to be steps per revolution which is 512
 # E: 13.5mm / 2048 steps = 0.0066 mm/step | 13.5mm / 512 steps = 0.0264 mm/step
 # F: C / E | 0.000123 mm/step / 0.0264 mm/step = 0.0046
-compensation_ratio = 0.01888 # # 100 / 16 * 512 ... so why does 0.01888 work better ?
+compensation_ratio = 0.03 # 0.01888 # This worked until I fixed the rotation to only do 1/4 of the steps
 gearRatio = 100.0 / 16.0
 
 # Buffer for theta-rho pairs
@@ -250,19 +250,19 @@ test_input5 = """
 1.5708,0;
 0,0;"""
 
-test_input4 = """
+test_input6 = """
 6.28319,0;
 12.5664,0;
 18.8495,0;
 """
 
-test_input5 = """
+test_input7 = """
 1.5708,0;
 3.14159,0;
 4.71239,0;
 6.28319,0;"""
 
-test_input6 = """
+test_input8 = """
 0,1;
 0,0;
 0,1;
@@ -270,7 +270,7 @@ test_input6 = """
 0,1;
 0,0;
 0,1;"""
-input = test_input6
+input = test_input7
 
 filename = "patterns/03 pnuttrellis (E) (N N).thr"
 
