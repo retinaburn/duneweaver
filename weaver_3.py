@@ -1,6 +1,7 @@
 import machine
 import time
 import math
+import array
 
 # Define pins (adjust to your wiring)
 ROT_PIN1 = machine.Pin(4, machine.Pin.OUT)
@@ -15,7 +16,7 @@ INOUT_PIN4 = machine.Pin(6, machine.Pin.OUT)
 
 # Stepper parameters
 rot_total_steps = 512 * 6.25 # 100 (driven gear)/ 16 (teeth on gear) #12800
-inOut_total_steps = 4642
+inOut_total_steps = 4642 #4600 
 # A: 3200 steps = 100 (driven gear)/ 16 (drive gear) * 512 (steps pre revolution)
 # B: 0.397 mm/tooth = 13.5 (length of linear) / 34 (teeth on linear) 
 # C: 0.000123 mm/step  B / A
@@ -26,8 +27,20 @@ compensation_ratio = 0.01888 # # 100 / 16 * 512 ... so why does 0.01888 work bet
 gearRatio = 100.0 / 16.0
 
 # Buffer for theta-rho pairs
-BUFFER_SIZE = 10
-buffer = [[0.0, 0.0] for _ in range(BUFFER_SIZE)]
+BUFFER_SIZE = 32198  # Example size
+# Efficient approach using array.array (recommended)
+large_array = array.array('f', [0.0] * (BUFFER_SIZE * 2)) # 'f' is for single-precision float (4 bytes)
+
+# Reshape the 1D array into a 2D structure (without extra memory overhead)
+def reshape_array(arr, rows, cols):
+    if len(arr) != rows * cols:
+        raise ValueError("Array size does not match rows x cols")
+    for i in range(rows):
+        yield arr[i*cols:(i+1)*cols]
+
+two_d_array = list(reshape_array(large_array, BUFFER_SIZE, 2))
+
+
 bufferCount = 0
 batchComplete = False
 
@@ -147,14 +160,14 @@ def move_synchronized(rot_pins, rot_steps, inout_pins, inout_steps):
             for seq in rot_sequence:
                 for j, pin in enumerate(rot_pins):
                     pin.value(seq[j])
-                print("ROT Pin: ", "[ ", seq[0],", ", seq[1],", ", seq[2],", ", seq[3],"]")    
+                #print("ROT Pin: ", "[ ", seq[0],", ", seq[1],", ", seq[2],", ", seq[3],"]")    
                 time.sleep(0.002)    
             rot_steps_remaining -= 1
         if inout_steps_remaining > 0:
             for seq in inout_sequence:
                 for j, pin in enumerate(inout_pins):
                     pin.value(seq[j])
-                print("INOUT Pin: ", "[ ", seq[0],", ", seq[1],", ", seq[2],", ", seq[3],"]")
+                #print("INOUT Pin: ", "[ ", seq[0],", ", seq[1],", ", seq[2],", ", seq[3],"]")
                 time.sleep(0.002)
             inout_steps_remaining -= 1
     
@@ -166,7 +179,7 @@ def interpolatePath(startTheta, startRho, endTheta, endRho, subSteps):
     distance = math.sqrt((endTheta - startTheta)**2 + (endRho - startRho)**2)
     print("Distance:", distance)
 
-    numSteps = 1 if distance == 0 else int(distance / subSteps) # More readable
+    numSteps = 1 if distance <= 1 else int(distance / subSteps) # More readable
     print("Steps:", numSteps)
 
     print("Start Theta:", startTheta, "End Theta:", endTheta)
@@ -179,12 +192,37 @@ def interpolatePath(startTheta, startRho, endTheta, endRho, subSteps):
         movePolar(interpolatedTheta, interpolatedRho)
 
 
+def parseFile(filename):
+    global two_d_array, bufferCount
+    try:
+        with open(filename, 'r') as f:
+            for line in f:
+                line = line.strip()  # Remove leading/trailing whitespace
+                #print("Line: ", line)
+                if line and not line.startswith('#'):  # Ignore empty lines and comments
+                    elements = line.split(" ")  # Or process the line further here if needed
+                    two_d_array[bufferCount][0] = float(elements[0])
+                    two_d_array[bufferCount][1] = float(elements[1])
+                    bufferCount += 1
+            return
+    except OSError: #Catch file not found or other OS related errors
+        print(f"Error: File '{filename}' not found or could not be opened.")
+        return None
+    except Exception as e: #Catch other exceptions. Useful for debugging
+        print(f"An error occurred: {e}")
+        return None
 
-test_input1 = """SET_SPEED 1
-0.1,0.5;
-360.0,0.0;
--360.0,-0.5;
-"""
+def readInput(input):
+    global two_d_array, bufferCount
+    for line in input.split("\n"):
+        if line.endswith(";"):
+            pairs = line.split(";")[:-1]
+            for i, pair in enumerate(pairs):
+                print("Processing pair ", i, ":", pair)
+                theta, rho = map(float, pair.split(","))
+                two_d_array[bufferCount][0] = theta
+                two_d_array[bufferCount][1] = rho
+                bufferCount += 1
 
 test_input2 = """1.25673,0.03250;
 0.66059,0.03508;
@@ -217,60 +255,41 @@ test_input4 = """SET_SPEED 1
 18.8495,0;
 """
 
-test_input5 = """SET_SPEED 1
-HOME
-0,0;
+test_input5 = """
 1.5708,0;
 3.14159,0;
 4.71239,0;
 6.28319,0;"""
 
-input = test_input5
+input = test_input4
 
-# Main loop (simplified serial handling)
+filename = "patterns/03 pnuttrellis (E) (N N).thr"
+
+print("Parsing")
+#parseFile(filename)
+readInput(input)
+print("Parsed")
+print("Executing")
+batchComplete = True
+
 while True:
     try:
-        for line in input.split("\n"):
-            if line == "HOME":
-                homing()
-            elif line == "RESET_THETA":
-                isFirstCoordinates = True
-                currentTheta = 0
-                currentRho = 0
-                print("THETA_RESET")
-            elif line.startswith("SET_SPEED"):
-                try:
-                    speed = float(line.split(" ")[1])
-                    if speed > 0:
-                        maxSpeed = speed
-                        print("SPEED_SET")
-                    else:
-                        print("INVALID_SPEED")
-                except (IndexError, ValueError):
-                    print("INVALID_COMMAND")
-            elif line.endswith(";"):
-                pairs = line.split(";")[:-1]
-                for i, pair in enumerate(pairs):
-                    print("Processing pair ", i, ":", pair)
-                    theta, rho = map(float, pair.split(","))
-                    buffer[bufferCount][0] = theta
-                    buffer[bufferCount][1] = rho
-                    bufferCount += 1
-        batchComplete = True
-
         if batchComplete and bufferCount > 0:
             if isFirstCoordinates:
-                #homing()
+                maxSpeed = 1
+                homing()
                 isFirstCoordinates = False
             startTheta = currentTheta
             startRho = currentRho
             print ("Buffer Count: ", bufferCount)
-            for i in range(bufferCount):
-                print("Interpolating buffer item ", i)
-                interpolatePath(startTheta, startRho, buffer[i][0], buffer[i][1], subSteps)
-                startTheta = buffer[i][0]
-                startRho = buffer[i][1]
-                time.sleep(10)
+            for index in range(bufferCount):
+                row = two_d_array[index]
+                print("Interpolating buffer item ", row)
+                interpolatePath(startTheta, startRho, row[0], row[1], subSteps)
+                startTheta = row[0]
+                startRho = row[1]
+                #time.sleep(10)
+                print("Row complete")
             batchComplete = False
             bufferCount = 0
             print("R")
